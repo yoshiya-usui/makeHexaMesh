@@ -1,3 +1,26 @@
+//--------------------------------------------------------------------------
+// MIT License
+//
+// Copyright (c) 2021 Yoshiya Usui
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//--------------------------------------------------------------------------
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -234,6 +257,12 @@ void MeshGeneration::readInputFile(){
 		else if( line == "TETRA2" ){
 			m_meshType = TETRA2;
 		}
+		else if( line == "DHEXA" ){
+			m_meshType = DHEXA;
+		}
+		else if( line == "PRISM" ){
+			m_meshType = PRISM;
+		}
 		//else if( line.substr(0,3).compare("END") == 0 ){
 		else if( line == "END" ){
 			std::cout << "End of the data." << std::endl;
@@ -252,7 +281,11 @@ void MeshGeneration::readInputFile(){
 	}else if( m_meshType == TETRA ){
 		std::cout << "Type of mesh : Tetrahedron" << std::endl; 
 	}else if( m_meshType == TETRA2 ){
-		std::cout << "Type of mesh : Tetrahedron2" << std::endl; 
+		std::cout << "Type of mesh : Tetrahedron2" << std::endl;
+	}else if( m_meshType == DHEXA ){
+		std::cout << "Type of mesh : deformed hexahedron" << std::endl; 
+	}else if( m_meshType == PRISM ){
+		std::cout << "Type of mesh : Prism" << std::endl; 
 	}
 
 	// Check whether data of every layer has been read
@@ -1573,6 +1606,209 @@ int MeshGeneration::calcNodeIDOfTetraMesh2( const int ix, const int iy, const in
 			break;
 	}
 
+}
+
+// Calculate ID of neighbor element for prism mesh
+int MeshGeneration::calcNeighborElementIDOfPrismMesh( const int ix, const int iy, const int iz, const int iSubElem, const int iFace ) const{
+
+	if( m_meshType != PRISM ){
+		std::cerr << "typeOfSubTetraMesh can be use only for prism mesh !!" << std::endl;
+		exit(1);
+	}
+
+	if( m_orderOfNumbering != 1 ){
+		std::cerr << "Paramter specifing order of numbering must be one !!" << std::endl;
+		exit(1);
+	}
+
+	const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+
+	int offsetXMinus = -9;
+	int offsetXPlus  = -9;
+	int offsetYMinus = -9;
+	int offsetYPlus  = -9;
+	int offsetZMinus = -9;
+	int offsetZPlus  = -9;
+
+	// Outer boundary
+	if( ix == 0 ){
+		if( iSubElem == 1 && iFace == 1 ){
+			return -1;
+		}
+	}else{
+		offsetXMinus = m_XYZ2ElemID[ix-1][iy][iz] * 2;
+	}
+	
+	if( ix == m_numX - 1 ){
+		if( iSubElem == 0 && iFace == 2 ){
+			return -1;
+		}
+	}else{
+		offsetXPlus = m_XYZ2ElemID[ix+1][iy][iz] * 2;
+	}
+
+	if( iy == 0 ){
+		if( iSubElem == 0 && iFace == 3 ){
+			return -1;
+		}
+	}else{
+		offsetYMinus = m_XYZ2ElemID[ix][iy-1][iz] * 2; 
+	}
+	
+	if( iy == m_numY - 1 ){
+		if( iSubElem == 1 && iFace == 2 ){
+			return -1;
+		}
+	}else{
+		offsetYPlus = m_XYZ2ElemID[ix][iy+1][iz] * 2; 
+	}
+
+	if( iz == 0 ){
+		if( iFace == 4 ){
+			return -1;
+		}
+	}else{
+		offsetZMinus = m_XYZ2ElemID[ix][iy][iz-1] * 2; 
+	}
+	
+	if( iz == m_numZ - 1 ){
+		if( iFace == 0 ){
+			return -1;
+		}
+	}else{
+		offsetZPlus = m_XYZ2ElemID[ix][iy][iz+1] * 2; 
+	}
+	
+	switch( iSubElem ){
+		case 0:
+			switch( iFace ){
+				case 0:
+					return offsetZPlus;
+					break;
+				case 1:
+					return offset + 1;
+					break;
+				case 2:
+					return offsetXPlus + 1;
+					break;
+				case 3:
+					return offsetYMinus + 1;
+					break;
+				case 4:
+					return offsetZMinus;
+					break;
+				default:
+					std::cerr << "Wrong face ID !! : iFace = " << iFace << std::endl;
+					exit(1);
+					break;
+			}
+			break;
+		case 1:
+			switch( iFace ){
+				case 0:
+					return offsetZPlus + 1;
+					break;
+				case 1:
+					return offsetXMinus;
+					break;
+				case 2:
+					return offsetYPlus;
+					break;
+				case 3:
+					return offset;
+					break;
+				case 4:
+					return offsetZMinus + 1;
+					break;
+				default:
+					std::cerr << "Wrong face ID !! : iFace = " << iFace << std::endl;
+					exit(1);
+					break;
+			}
+			break;
+		default:
+			std::cerr << "Wrong sub element ID !! : iSubElem = " << iSubElem << std::endl;
+			exit(1);
+			break;
+	}
+
+	return -9;
+
+}
+
+// Calculate ID of neighbor element for prism mesh
+int MeshGeneration::calcNodeIDOfPrismMesh(  const int ix, const int iy, const int iz, const int iSubElem, const int iNode ) const{
+
+	if( m_meshType != PRISM ){
+		std::cerr << "typeOfSubTetraMesh can be use only for prism mesh !!" << std::endl;
+		exit(1);
+	}
+
+	if( m_orderOfNumbering != 1 ){
+		std::cerr << "Paramter specifing order of numbering must be one !!" << std::endl;
+		exit(1);
+	}
+
+	const int iElem = m_XYZ2ElemID[ix][iy][iz];
+
+	switch( iSubElem ){
+		case 0:
+			switch( iNode ){
+				case 0:
+					return m_nodesOfElements[iElem*8 + 4];
+					break;
+				case 1:
+					return m_nodesOfElements[iElem*8 + 6];
+					break;
+				case 2:
+					return m_nodesOfElements[iElem*8 + 5];
+					break;
+				case 3:
+					return m_nodesOfElements[iElem*8 + 0];
+					break;
+				case 4:
+					return m_nodesOfElements[iElem*8 + 2];
+					break;
+				case 5:
+					return m_nodesOfElements[iElem*8 + 1];
+					break;
+				default:
+					std::cerr << "Wrong node ID !! : iNode = " << iNode << std::endl;
+					exit(1);
+					break;
+			}
+			break;
+		case 1:
+			switch( iNode ){
+				case 0:
+					return m_nodesOfElements[iElem*8 + 4];
+					break;
+				case 1:
+					return m_nodesOfElements[iElem*8 + 7];
+					break;
+				case 2:
+					return m_nodesOfElements[iElem*8 + 6];
+					break;
+				case 3:
+					return m_nodesOfElements[iElem*8 + 0];
+					break;
+				case 4:
+					return m_nodesOfElements[iElem*8 + 3];
+					break;
+				case 5:
+					return m_nodesOfElements[iElem*8 + 2];
+					break;
+				default:
+					std::cerr << "Wrong node ID !! : iNode = " << iNode << std::endl;
+					exit(1);
+					break;
+			}
+			break;
+		default:
+			std::cerr << "Wrong sub element ID !! : iSubElem = " << iSubElem << std::endl;
+			exit(1);
+			break;
+	}
 
 }
 
@@ -2493,6 +2729,292 @@ void MeshGeneration::outputMeshData(){
 
 		fclose(fp);
 		
+	}else if( m_meshType == DHEXA ){// Hexa mesh
+
+		fprintf(fp, "%s\n", "DHEXA" );
+
+		fprintf(fp, "%10d\n", m_numNodeTotal );
+	
+		for( int iNode = 0; iNode < m_numNodeTotal; ++iNode ){
+			fprintf(fp, "%10d%20f%20f%20f\n",
+				iNode,
+				m_locXYZ[iNode*3    ] * distanceConversion,			
+				m_locXYZ[iNode*3 + 1] * distanceConversion,
+				m_locXYZ[iNode*3 + 2] * distanceConversion );
+		}
+
+		fprintf(fp, "%10d\n", m_numElemTotal );
+
+		for( int iElem = 0; iElem < m_numElemTotal; ++iElem ){
+			fprintf(fp, "%10d%10d%10d%10d%10d%10d%10d%10d%10d\n",
+				iElem,
+				m_nodesOfElements[iElem*8    ],
+				m_nodesOfElements[iElem*8 + 1],
+				m_nodesOfElements[iElem*8 + 2],
+				m_nodesOfElements[iElem*8 + 3],
+				m_nodesOfElements[iElem*8 + 4],
+				m_nodesOfElements[iElem*8 + 5],
+				m_nodesOfElements[iElem*8 + 6],
+				m_nodesOfElements[iElem*8 + 7] );
+			for( int iNeib = 0; iNeib < 6; ++iNeib ){
+				if( m_neighborElements[iElem*6 + iNeib] < 0 ){
+					fprintf(fp, "%s%10d\n", "          ", m_neighborElements[iElem*6 + iNeib]);
+				}else{
+					fprintf(fp, "%s%10d%10d\n", "          ", 1, m_neighborElements[iElem*6 + iNeib]);
+				}
+			}
+		}
+
+		//--------------------------------------------------
+		// Elements and nodes belonging to boundary planes
+		//--------------------------------------------------
+		// Y-Z Plane ( Minus Side )
+		fprintf(fp, "%10d\n", m_numY * m_numZ );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				const int iElem = m_XYZ2ElemID[0][iy][iz];
+				fprintf(fp, "%10d%10d\n", iElem, 0);
+			}
+		}
+
+		// Y-Z Plane ( Plus Side )
+		fprintf(fp, "%10d\n", m_numY * m_numZ );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				const int iElem = m_XYZ2ElemID[m_numX-1][iy][iz];
+				fprintf(fp, "%10d%10d\n", iElem, 1 );
+			}
+		}
+
+		// Z-X Plane ( Minus Side )
+		fprintf(fp, "%10d\n", m_numZ * m_numX );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iElem = m_XYZ2ElemID[ix][0][iz];
+				fprintf(fp, "%10d%10d\n", iElem, 2 );
+			}
+		}
+
+		// Z-X Plane ( Plus Side )
+		fprintf(fp, "%10d\n", m_numZ * m_numX );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iElem = m_XYZ2ElemID[ix][m_numY-1][iz];
+				fprintf(fp, "%10d%10d\n", iElem, 3 );
+			}
+		}
+
+		// X-Y Plane ( Minus Side ) => Top Boundary
+		fprintf(fp, "%10d\n", m_numX * m_numY );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iElem = m_XYZ2ElemID[ix][iy][0];
+				fprintf(fp, "%10d%10d\n", iElem, 4 );
+			}
+		}
+
+		// X-Y Plane ( Plus Side ) => Bottom Boundary
+		fprintf(fp, "%10d\n", m_numX * m_numY );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iElem = m_XYZ2ElemID[ix][iy][m_numZ-1];
+				fprintf(fp, "%10d%10d\n", iElem, 5 );
+			}
+		}
+
+		// Earth surface
+		fprintf(fp, "%10d\n", m_numX * m_numY );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+#ifdef _BATHYMETRY
+				const int iElem = m_XYZ2ElemID[ix][iy][m_elemGroupingZ[2]];
+#else
+				const int iElem = m_XYZ2ElemID[ix][iy][m_elemGroupingZ[1]];
+#endif
+				fprintf(fp, "%10d%10d\n", iElem, 4 );
+			}
+		}
+
+		fclose(fp);
+
+		//------------------------------
+		//--- resistivity model data ---
+		//------------------------------
+		//if( (fp = fopen("resistivity_model0.dat", "w")) == NULL ) {
+		if( (fp = fopen("resistivity_block_iter0.dat", "w")) == NULL ) {
+			printf("File open error : resistivity_block_iter0.dat !! \n");
+			exit(1);
+		}
+
+		fprintf(fp, "%10d%10d\n",m_numX*m_numY*m_numZ, m_numResistivityBlocks );
+
+		for( int iElem = 0; iElem < m_numElemTotal; ++iElem ){
+			fprintf(fp, "%10d%10d\n", iElem, m_resistivityBlockID[iElem] );
+		}
+
+#ifdef _OLD
+		fprintf(fp, "%10d%5s%15e%10d\n", 0, "     ", m_ResistivityValues[0] , 1 );
+#else
+		fprintf(fp, "%10d%5s%15e%15e%15e%15e%10d\n", 0, "     ", m_ResistivityValues[0], 1.0e-20, 1.0e+20, 1.0, 1 );
+#endif
+		for( int iBlk = 1; iBlk < m_numResistivityBlocks; ++iBlk ){
+			//fprintf(fp, "%10d%5s%15e\n", iBlk, "     ", m_ResistivityValues[iBlk] );
+			//fprintf(fp, "%10d%5s%15e%10d\n", iBlk, "     ", m_ResistivityValues[iBlk] , 0 );
+#ifdef _OLD
+			fprintf(fp, "%10d%5s%15e%10d\n", iBlk, "     ", m_ResistivityValues[iBlk] , m_fixResistivityValues[iBlk] ? 1 : 0 );
+#else
+			fprintf(fp, "%10d%5s%15e%15e%15e%15e%10d\n", iBlk, "     ", m_ResistivityValues[iBlk], 1.0e-20, 1.0e+20, 1.0, m_fixResistivityValues[iBlk] ? 1 : 0 );
+#endif
+		}
+
+		fclose(fp);
+
+	}else if( m_meshType == PRISM ){// Prism mesh
+
+		if( m_orderOfNumbering != 1 ){
+			std::cerr << "Paramter specifing order of numbering must be one !!" << std::endl;
+			exit(1);
+		}
+
+		fprintf(fp, "%s\n", "PRISM_TETRA" );
+
+		fprintf(fp, "%10d\n", m_numNodeTotal );
+	
+		for( int iNode = 0; iNode < m_numNodeTotal; ++iNode ){
+			fprintf(fp, "%10d%20f%20f%20f\n",
+				iNode,
+				m_locXYZ[iNode*3    ] * distanceConversion,			
+				m_locXYZ[iNode*3 + 1] * distanceConversion,
+				m_locXYZ[iNode*3 + 2] * distanceConversion );
+		}
+
+		// Total numbers of elements
+		fprintf(fp, "%10d\n", m_numElemTotal * 2 );
+
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				for( int ix = 0; ix < m_numX; ++ix ){
+					const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+					for( int isub = 0; isub < 2; ++isub ){
+						fprintf(fp, "%10d%10d%10d%10d%10d%10d%10d%10d%10d%10d%10d%10d%10d\n",
+							offset + isub,
+							1,
+							calcNeighborElementIDOfPrismMesh( ix, iy, iz, isub, 0 ),
+							calcNeighborElementIDOfPrismMesh( ix, iy, iz, isub, 1 ),
+							calcNeighborElementIDOfPrismMesh( ix, iy, iz, isub, 2 ),
+							calcNeighborElementIDOfPrismMesh( ix, iy, iz, isub, 3 ),
+							calcNeighborElementIDOfPrismMesh( ix, iy, iz, isub, 4 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 0 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 1 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 2 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 3 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 4 ),
+							calcNodeIDOfPrismMesh( ix, iy, iz, isub, 5 ) );
+					}
+				}
+			}
+		}
+
+		//--------------------------------------------------
+		// Elements and faces belonging to boundary planes
+		//--------------------------------------------------
+		// Y-Z Plane ( Minus Side )
+		fprintf(fp, "%10d\n", m_numY * m_numZ );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				const int ix = 0;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset + 1, 1 );
+			}
+		}
+
+		// Y-Z Plane ( Plus Side )
+		fprintf(fp, "%10d\n", m_numY * m_numZ );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				const int ix = m_numX-1;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset, 2 );
+			}
+		}
+
+		// Z-X Plane ( Minus Side )
+		fprintf(fp, "%10d\n", m_numZ * m_numX );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iy = 0;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset, 3 );
+			}
+		}
+
+		// Z-X Plane ( Plus Side )
+		fprintf(fp, "%10d\n", m_numZ * m_numX );
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iy = m_numY-1;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset + 1, 2 );
+			}
+		}
+
+		// X-Y Plane ( Minus Side ) => Top Boundary
+		fprintf(fp, "%10d\n", m_numX * m_numY * 2 );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iz = 0;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset    , 4 );
+				fprintf(fp, "%10d%10d\n", offset + 1, 4 );
+			}
+		}
+
+		// X-Y Plane ( Plus Side ) => Bottom Boundary
+		fprintf(fp, "%10d\n", m_numX * m_numY * 2 );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iz = m_numZ-1;
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset    , 0 );
+				fprintf(fp, "%10d%10d\n", offset + 1, 0 );
+			}
+		}
+
+		// Land surface
+		fprintf(fp, "%10d\n", m_numX * m_numY * 2 );
+		for( int iy = 0; iy < m_numY; ++iy ){
+			for( int ix = 0; ix < m_numX; ++ix ){
+				const int iz = m_elemGroupingZ[1];
+				const int offset = m_XYZ2ElemID[ix][iy][iz] * 2;
+				fprintf(fp, "%10d%10d\n", offset    , 4 );
+				fprintf(fp, "%10d%10d\n", offset + 1, 4 );
+			}
+		}
+
+		fclose(fp);
+
+		//------------------------------
+		//--- resistivity model data ---
+		//------------------------------
+		if( (fp = fopen("resistivity_block_iter0.dat", "w")) == NULL ) {
+			printf("File open error : resistivity_block_iter0.dat !! \n");
+			exit(1);
+		}
+
+		fprintf(fp, "%10d%10d\n",m_numElemTotal * 2, m_numResistivityBlocks );
+
+		for( int iElem = 0; iElem < m_numElemTotal; ++iElem ){
+			for( int i = 0; i < 2; ++i ){
+				fprintf(fp, "%10d%10d\n", iElem * 2 + i, m_resistivityBlockID[iElem] );
+			}
+		}
+
+		fprintf(fp, "%10d%5s%15.6e%15.6e%15.6e%10.1e%10d\n", 0, "     ", m_ResistivityValues[0], 1.0e-20, 1.0e+20, 1.0, 1 );
+		for( int iBlk = 1; iBlk < m_numResistivityBlocks; ++iBlk ){
+			fprintf(fp, "%10d%5s%15.6e%15.6e%15.6e%10.1e%10d\n", iBlk, "     ", m_ResistivityValues[iBlk], 1.0e-20, 1.0e+20, 1.0, m_fixResistivityValues[iBlk] ? 1 : 0 );
+		}
+
+		fclose(fp);
 	}else{
 		std::cerr << "Improper mesh type !" << std::endl;
 		exit(1);
@@ -2506,7 +3028,7 @@ void MeshGeneration::outputVTK(){
 
 	std::cout << "Output mesh data to a VTK file." << std::endl;
 
-	if( m_meshType == TETRA || m_meshType == TETRA2 ){// Tetra mesh
+	if( m_meshType == TETRA || m_meshType == TETRA2 || m_meshType == PRISM ){// Tetra mesh
 		if( m_orderOfNumbering != 1 ){
 			std::cerr << "Paramter specifing order of numbering must be one !!" << std::endl;
 			exit(1);
@@ -2531,7 +3053,7 @@ void MeshGeneration::outputVTK(){
 	}
 	
 
-	if( m_meshType == HEXA ){// Hexa mesh
+	if( m_meshType == HEXA || m_meshType == DHEXA ){// Hexa mesh
 
 		vtkFile << "CELLS " << m_numElemTotal << " " << m_numElemTotal*9 << std::endl;
 		for( int iElem = 0; iElem < m_numElemTotal; ++iElem ){
@@ -2662,6 +3184,55 @@ void MeshGeneration::outputVTK(){
 			vtkFile << iElem << std::endl;
 		}
 
+	}else if( m_meshType == PRISM ){// Prism mesh
+
+		const int numElem = m_numElemTotal * 2;
+
+		vtkFile << "CELLS " << numElem << " " << numElem * 7 << std::endl;
+		for( int iz = 0; iz < m_numZ; ++iz ){
+			for( int iy = 0; iy < m_numY; ++iy ){
+				for( int ix = 0; ix < m_numX; ++ix ){
+					for( int isub = 0; isub < 2; ++isub ){
+						vtkFile << 6 << " "
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 0 ) << " " 
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 2 ) << " " 
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 1 ) << " " 
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 3 ) << " " 
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 5 ) << " " 
+								<< calcNodeIDOfPrismMesh( ix, iy, iz, isub, 4 ) << std::endl;
+					}
+				}
+			}
+		}
+
+		vtkFile << "CELL_TYPES " << numElem << std::endl;
+		for( int iElem = 0 ; iElem < numElem; ++iElem ){
+			vtkFile << "13" << std::endl;
+		}
+
+		vtkFile << "CELL_DATA " << numElem << std::endl;
+		vtkFile << "SCALARS BlockID int" <<  std::endl;
+		vtkFile << "LOOKUP_TABLE default" <<  std::endl;
+		for( int iElem = 0 ; iElem < m_numElemTotal; ++iElem ){
+			for( int isub = 0; isub < 2; ++isub ){
+				vtkFile << m_resistivityBlockID[iElem] << std::endl;
+			}
+		}
+
+		vtkFile << "SCALARS Resistivity[Ohm-m] float" <<  std::endl;
+		vtkFile << "LOOKUP_TABLE default" <<  std::endl;
+		for( int iElem = 0 ; iElem < m_numElemTotal; ++iElem ){
+			for( int isub = 0; isub < 2; ++isub ){
+				vtkFile << m_ResistivityValues[ m_resistivityBlockID[iElem] ] << std::endl;
+			}
+		}
+
+		vtkFile << "SCALARS ElemID int" <<  std::endl;
+		vtkFile << "LOOKUP_TABLE default" <<  std::endl;
+		for( int iElem = 0 ; iElem < numElem; ++iElem ){
+			vtkFile << iElem << std::endl;
+		}
+
 	}else{
 		std::cerr << "Improper mesh type !" << std::endl;
 		exit(1);
@@ -2714,3 +3285,106 @@ void MeshGeneration::outputVTK(){
 #endif
 
 }
+
+#ifdef _TOPO
+// Incorporate topography to the mesh
+void MeshGeneration::incorporateTopography(){
+
+	if( m_meshType != DHEXA ){
+		std::cerr << __FUNCTION__ << "only support DHEXA." << std::endl;
+		exit(1);
+	}
+
+	const double zMin = m_CoordinatesZ[0];
+	const double zMax = m_CoordinatesZ[m_numZ];
+
+	const double length = 0.45 * 0.5;
+	for( int iNode = 0; iNode < m_numNodeTotal; ++iNode ){
+		const double x = m_locXYZ[iNode*3    ];		
+		const double y = m_locXYZ[iNode*3 + 1];
+		const double z = m_locXYZ[iNode*3 + 2];
+		if( x > 1.0 || x < -1.0 || y > 1.0 || y < -1.0 ){
+			continue;
+		}
+		double height(0.0);
+		if( x < length && x > -length && y < length && y > -length ){
+			height = 0.45;
+		}else if( fabs(x) >= fabs(y) ){
+			if( x > 0.0 ){
+				height = 0.45 + (x - length) / (1.0 - length) * (0.0 - 0.45);
+			}else{
+				height = 0.0 + (x + 1.0) / (-length + 1.0) * (0.45 - 0.0);
+			}
+		}
+		else{
+			if( y > 0.0 ){
+				height = 0.45 + (y - length) / (1.0 - length) * (0.0 - 0.45);
+			}else{
+				height = 0.0 + (y + 1.0) / (-length + 1.0) * (0.45 - 0.0);
+			}
+		}
+		if( z >= 0.0 ){
+			const double factor = (zMax - z) / fabs(zMax);
+			const double zMod = z - height * factor;
+			m_locXYZ[iNode*3 + 2] = zMod;
+		}else{
+			const double factor = (z - zMin) / fabs(zMin);
+			const double zMod = z - height * factor;
+			m_locXYZ[iNode*3 + 2] = zMod;
+		}
+	}
+
+}
+#endif
+
+#ifdef _BATHYMETRY
+// Incorporate bathymetry to the mesh
+void MeshGeneration::incorporateBathymetry(){
+
+	if( m_meshType != DHEXA ){
+		std::cerr << __FUNCTION__ << "only support DHEXA." << std::endl;
+		exit(1);
+	}
+
+	const double pi = acos(-1.0);
+	const double zMin = m_CoordinatesZ[0];
+	const double zMax = m_CoordinatesZ[m_numZ];
+	const double zSeaBot = m_CoordinatesZ[m_elemGroupingZ[2]];
+	for( int iNode = 0; iNode < m_numNodeTotal; ++iNode ){
+		const double x = m_locXYZ[iNode*3    ];		
+		const double y = m_locXYZ[iNode*3 + 1];
+		const double z = m_locXYZ[iNode*3 + 2];
+		if( z < 0.0 ){
+			continue;
+		}
+		const double deg = x * 360.0;
+		const double rad = deg * pi / 180.0;
+		const double depth = 0.1 * ( sin( rad + pi * 0.5 ) - 1.0 ) + 0.6;
+		if( z >= zSeaBot ){
+			const double factor = (zMax - z) / (zMax - zSeaBot);
+			const double zMod = z + ( depth - zSeaBot ) * factor;
+			m_locXYZ[iNode*3 + 2] = zMod;
+		}else if( z >= 0.0 ){
+			const double factor = z / zSeaBot;
+			const double zMod = z + ( depth - zSeaBot ) * factor;
+			m_locXYZ[iNode*3 + 2] = zMod;
+		}
+		//if( z < 0.0 ){
+		//	continue;
+		//}
+		//const double deg = y * 360.0;
+		//const double rad = deg * pi / 180.0;
+		//const double depth = 0.1 * ( sin( rad + pi * 0.5 ) - 1.0 ) + 0.6;
+		//if( z >= zSeaBot ){
+		//	const double factor = (zMax - z) / (zMax - zSeaBot);
+		//	const double zMod = z + ( depth - zSeaBot ) * factor;
+		//	m_locXYZ[iNode*3 + 2] = zMod;
+		//}else if( z >= 0.0 ){
+		//	const double factor = z / zSeaBot;
+		//	const double zMod = z + ( depth - zSeaBot ) * factor;
+		//	m_locXYZ[iNode*3 + 2] = zMod;
+		//}
+	}
+
+}
+#endif
